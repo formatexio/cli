@@ -12,17 +12,14 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
 
   build:
-    name: Build (${{ matrix.suffix }})
+    name: Build binaries
     needs: create-release
     runs-on: ubuntu-latest
     strategy:
@@ -58,9 +55,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          VERSION=${{ needs.create-release.outputs.tag }}
           go build \
-            -ldflags="-s -w -X github.com/formatexio/cli/cmd.Version=${VERSION}" \
+            -ldflags="-s -w -X github.com/formatexio/cli/cmd.Version=${{ github.ref_name }}" \
             -o formatex-${{ matrix.suffix }} \
             .
 
