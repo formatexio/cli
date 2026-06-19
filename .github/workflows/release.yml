@@ -9,30 +9,28 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
-
-  build:
-    needs: create-release
+  release:
+    name: Build and release
     runs-on: ubuntu-latest
     strategy:
       fail_fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, suffix: linux-amd64      }
-          - { goos: linux,   goarch: arm64, suffix: linux-arm64      }
-          - { goos: darwin,  goarch: amd64, suffix: darwin-amd64     }
-          - { goos: darwin,  goarch: arm64, suffix: darwin-arm64     }
-          - { goos: windows, goarch: amd64, suffix: windows-amd64.exe }
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+          - goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+          - goos: darwin
+            goarch: amd64
+            suffix: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            suffix: darwin-arm64
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +50,10 @@ jobs:
             -o "formatex-${{ matrix.suffix }}" \
             .
 
-      - name: Upload binary
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" "formatex-${{ matrix.suffix }}"
+          gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME" 2>/dev/null || \
+            gh release view "$GITHUB_REF_NAME" > /dev/null
+          gh release upload "$GITHUB_REF_NAME" "formatex-${{ matrix.suffix }}" --clobber
