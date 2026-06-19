@@ -13,7 +13,6 @@ jobs:
     name: Build and release
     runs-on: ubuntu-latest
     strategy:
-      fail_fast: false
       matrix:
         include:
           - goos: linux
@@ -37,7 +36,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: "1.24"
 
       - name: Build
         env:
@@ -45,15 +44,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
+          VERSION=${GITHUB_REF_NAME}
           go build \
-            -ldflags="-s -w -X github.com/formatexio/cli/cmd.Version=$GITHUB_REF_NAME" \
-            -o "formatex-${{ matrix.suffix }}" \
+            -ldflags="-s -w -X github.com/formatexio/cli/cmd.Version=${VERSION}" \
+            -o formatex-${{ matrix.suffix }} \
             .
 
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME" 2>/dev/null || \
-            gh release view "$GITHUB_REF_NAME" > /dev/null
-          gh release upload "$GITHUB_REF_NAME" "formatex-${{ matrix.suffix }}" --clobber
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: formatex-${{ matrix.suffix }}
