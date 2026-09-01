@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -87,14 +88,28 @@ func runCompile(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
-		result, err = client.Compile(api.CompileRequest{
-			LaTeX:   string(latex),
-			Engine:  compileEngine,
-			Runs:    compileRuns,
-			Timeout: compileTimeout,
-		})
-		if err != nil {
-			return handleCompileError(err)
+		if hasLocalIncludes(filepath.Dir(src), string(latex)) {
+			// The document pulls in sibling files (\input, \include, ...);
+			// a bare single-file upload can't see them, so bundle the
+			// whole project directory instead.
+			zipData, err := zipDirectory(filepath.Dir(src))
+			if err != nil {
+				return fmt.Errorf("failed to zip project directory: %w", err)
+			}
+			result, err = client.CompileZip(zipData, compileEngine, filepath.Base(src), compileRuns, compileTimeout)
+			if err != nil {
+				return handleCompileError(err)
+			}
+		} else {
+			result, err = client.Compile(api.CompileRequest{
+				LaTeX:   string(latex),
+				Engine:  compileEngine,
+				Runs:    compileRuns,
+				Timeout: compileTimeout,
+			})
+			if err != nil {
+				return handleCompileError(err)
+			}
 		}
 	default:
 		// Try wrapping the directory as a ZIP if it's a directory
@@ -167,6 +182,30 @@ func handleCompileError(err error) error {
 		return fmt.Errorf("compilation failed")
 	}
 	return err
+}
+
+var includeCommandRe = regexp.MustCompile(`\\(?:input|include|subfile|includegraphics(?:\[[^\]]*\])?|bibliography|addbibresource)\{([^}]+)\}`)
+
+// hasLocalIncludes reports whether latex references any file, via \input,
+// \include, and similar commands, that actually exists on disk relative to
+// dir. TeX allows omitting the .tex extension, so both forms are checked.
+func hasLocalIncludes(dir, latex string) bool {
+	for _, m := range includeCommandRe.FindAllStringSubmatch(latex, -1) {
+		ref := strings.TrimSpace(m[1])
+		if ref == "" {
+			continue
+		}
+		candidates := []string{ref}
+		if filepath.Ext(ref) == "" {
+			candidates = append(candidates, ref+".tex")
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(c))); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func zipDirectory(dir string) ([]byte, error) {
